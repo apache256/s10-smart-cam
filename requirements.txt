@@ -1,0 +1,7 @@
+# Wymagania dla Etapu 1
+# Na ten moment używamy tylko bibliotek wbudowanych (os, time, subprocess, datetime)
+# oraz narzędzia termux-api z Termuxa, więc pip na ten moment nie ma nic do roboty.
+
+# W przyszłości (Etap 2+), gdy wejdzie YOLO/OpenCV:
+# opencv-python-headless==4.9.0.80
+# ultralytics
