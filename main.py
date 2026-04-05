@@ -112,9 +112,19 @@ def ask_ollama_for_description(image_path):
         return "Zauważyłem cię, ale brakuje mi pakietu requests do opisu."
         
     try:
-        # Kodujemy zdjęcie do tekstu (format Base64) z którym radzą sobie LLM'y
-        with open(image_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        # Kodujemy zdjęcie do tekstu (format Base64), ale najpierw je mocno pomniejszamy!
+        # Zdjęcia z natywnej kamery S10 mają po kilkanaście megapikseli, co natychmiast
+        # "zabija" model wideo z braku RAM-u i wyrzuca błąd 500 po 90 sekundach.
+        image = cv2.imread(image_path)
+        h, w = image.shape[:2]
+        max_dim = 640
+        if w > max_dim or h > max_dim:
+            scale = max_dim / max(w, h)
+            image = cv2.resize(image, (int(w * scale), int(h * scale)))
+            
+        # Zapisz do bufora pamięci ze stratną kompresją, zakoduj i wyślij:
+        _, buffer = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        encoded_string = base64.b64encode(buffer).decode('utf-8')
             
         prompt = (
             "Krótko opisz osobę widoczną na ujęciu jednym zdaniem w języku polskim. "
