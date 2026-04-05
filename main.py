@@ -2,22 +2,9 @@ import os
 import time
 import subprocess
 import urllib.request
-import base64
-import json
-import urllib.error
 from datetime import datetime
 
-# Próba zaimportowania np i requests
-try:
-    import requests
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
-    print("Brak biblioteki requests! Wpisz: pip install requests")
-
-# Wybór modelu VLM używanego do analizy
-OLLAMA_MODEL = "moondream"
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+# Sprawdzamy instalację OpenCV:
 try:
     import cv2
     import numpy as np
@@ -26,6 +13,12 @@ except ImportError as e:
     OPENCV_AVAILABLE = False
     print(f"Ostrzeżenie: Błąd ładowania OpenCV: {e}")
     print("Spróbuj: pkg install opencv-python")
+
+# Słownik 20 klas z darmowego i lekkiego modelu MobileNet-SSD (w języku polskim dla TTS!)
+CLASSES = ["tło", "samolot", "rower", "ptak", "łódka",
+           "butelka", "autobus", "samochód", "kot", "krzesło",
+           "krowa", "stół", "pies", "koń", "motocykl",
+           "człowieka", "roslinę", "owcę", "sofę", "pociąg", "telewizor"]
 
 # Link do superszybkiego modelu sieci MobileNet-SSD (Caffe format ok. 22MB)
 PROTOTXT_URL = "https://raw.githubusercontent.com/djmv/MobilNet_SSD_opencv/master/MobileNetSSD_deploy.prototxt"
@@ -59,85 +52,49 @@ def take_photo(output_filename="snapshot.jpg", camera_id="1"):
     except FileNotFoundError:
         return False
 
-def detect_human(image_path, net):
+def detect_objects(image_path, net):
     """
-    Przepuszcza zdjęcie przez OpenCV DNN i wykrywa człowieka.
+    Przepuszcza zdjęcie przez OpenCV C++ i wykrywa do 20 popularnych obiektów w mgnieniu oka.
+    Zwraca listę nazw wykrytych obiektów na zdjęciu.
     """
     if not OPENCV_AVAILABLE:
-        return False
+        return []
         
     if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
-        return False
+        return []
         
     image = cv2.imread(image_path)
     if image is None: 
-        return False
+        return []
     
     (h, w) = image.shape[:2]
-    # S10 przerobi to momentalnie wykorzystując natywne binarki C++ Androida (dzięki twojej instlacji libandroid-stub!)
     blob = cv2.dnn.blobFromImage(cv2.resize(image, (300, 300)), 0.007843, (300, 300), 127.5)
     
     net.setInput(blob)
     detections = net.forward()
     
-    found_human = False
+    found_objects = []
     
-    # Skanowanie wyników w klatce (bierzemy pod uwagę tylko powyżej 60% pewności)
     for i in np.arange(0, detections.shape[2]):
         confidence = detections[0, 0, i, 2]
-        
-        # 15 to indeks dla obiektu klasy "Czek" / "Osoba" w modelu MobileNetSSD
         idx = int(detections[0, 0, i, 1])
         
-        if confidence > 0.60 and idx == 15:
-            found_human = True
+        # Jeśli pewność powyżej 60% i wykrywamy coś z listy
+        if confidence > 0.60 and idx < len(CLASSES):
+            obj_name = CLASSES[idx]
+            found_objects.append(obj_name)
             
-            # Wrysuj zieloną ramkę na dowód wykrycia!
+            # Wrysuj czerwoną ramkę dla tego obiektu
             box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
             (startX, startY, endX, endY) = box.astype("int")
-            cv2.rectangle(image, (startX, startY), (endX, endY), (0, 255, 0), 2)
-            cv2.putText(image, "Czlowiek", (startX, startY - 15), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.rectangle(image, (startX, startY), (endX, endY), (0, 0, 255), 2)
+            cv2.putText(image, obj_name, (startX, startY - 15), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
             
-            cv2.imwrite(image_path, image)
-            break
+            cv2.imwrite(image_path, image) # Zapisujemy obraz z narysowanymi rzeczami
             
-    return found_human
-
-def ask_ollama_for_greeting():
-    """
-    Wysyła wyłącznie tekstowy alert do Ollamy by wygenerowała losowe powitanie.
-    Całkowicie omija ładowanie pliku jpg w ramy serwera OOM.
-    """
-    if not REQUESTS_AVAILABLE:
-        return "Zauważyłem cię, ale brakuje mi modułu HTTP by poprosić o tekst."
-        
-    try:
-        prompt = (
-            "System bezpieczeństwa właśnie wykrył człowieka przed okiem kamery. "
-            "Wymyśl jedno, krótkie unikalne powitanie po polsku dla takiego gościa. "
-            "Zacznij koniecznie od słów 'Dzień dobry, '"
-        )
-        
-        payload = {
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False # Czekamy na całość wygenerowanego tekstu
-        }
-        
-        print(f"      (LLM) Uruchamianie generatora tekstu z modelu '{OLLAMA_MODEL}'...")
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60) # Tekst pójdzie szybciej
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result.get('response', 'Dzień dobry. Brakuje mi słów.')
-        else:
-            return f"Błąd wewnętrzny modelu. Kod: {response.status_code}"
-            
-    except requests.exceptions.ConnectionError:
-        return "Nie mogę połączyć się z serwerem Ollama."
-    except Exception as e:
-        return "Błąd przetwarzania zlecenia."
+    # Zwracamy listę unikalnych znalezisk
+    return list(set(found_objects))
 
 def speak(text):
     try:
@@ -162,7 +119,7 @@ def main():
     
     os.makedirs("photos", exist_ok=True)
     photo_count = 0
-    human_count = 0
+    event_count = 0
     
     while True:
         try:
@@ -177,21 +134,17 @@ def main():
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Zdjęcie przechwycone ({end_time - start_time:.1f}s)...")
                 
                 if OPENCV_AVAILABLE and net is not None:
-                    is_human = detect_human(filename, net)
+                    detected_things = detect_objects(filename, net)
                     
-                    if is_human:
-                        print(f"   => 🚨 ROZPOZNANO SYLWETKĘ. Analiza...")
-                        human_count += 1
+                    if len(detected_things) > 0:
+                        # Łączymy znaleziska w słowa ("psa i kota")
+                        things_str = ", ".join(detected_things)
+                        print(f"   => 🚨 ROZPOZNANO OBIEKTY: {things_str.upper()}. Zapisano.")
+                        event_count += 1
                         
-                        # Tutaj Samsung dostaje lżejsze zadanie (czysty tekst):
-                        start_ollama = time.time()
-                        description = ask_ollama_for_greeting()
-                        end_ollama = time.time()
-                        
-                        print(f"   => [OLLAMA odp. w {end_ollama - start_ollama:.1f}s]: {description}")
-                        speak(description)
-                        
-                        time.sleep(1) # Chwila przerwy po mowie
+                        # Telefon automatycznie mówi co widzi!
+                        speak(f"Dzień dobry! Zauważyłem {things_str}.")
+                        time.sleep(1.5) # Odpoczynek na wygłoszenie
                     else:
                         print(f"   => 🟢 Spokój. Usuwam pustą klatkę...")
                         os.remove(filename) 
@@ -203,7 +156,7 @@ def main():
             time.sleep(1)
             
         except KeyboardInterrupt:
-            print(f"\nUśpiono. Zbadano {photo_count} scen. Wykryto {human_count} podejrzanych.")
+            print(f"\nUśpiono. Zbadano {photo_count} scen. Wykryto incydentów wizyjnych: {event_count}.")
             break
 
 if __name__ == "__main__":
