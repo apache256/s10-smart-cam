@@ -104,53 +104,40 @@ def detect_human(image_path, net):
             
     return found_human
 
-def ask_ollama_for_description(image_path):
+def ask_ollama_for_greeting():
     """
-    Wysyła zdjęcie do modelu VLM i zwraca polski opis.
+    Wysyła wyłącznie tekstowy alert do Ollamy by wygenerowała losowe powitanie.
+    Całkowicie omija ładowanie pliku jpg w ramy serwera OOM.
     """
     if not REQUESTS_AVAILABLE:
-        return "Zauważyłem cię, ale brakuje mi pakietu requests do opisu."
+        return "Zauważyłem cię, ale brakuje mi modułu HTTP by poprosić o tekst."
         
     try:
-        # Kodujemy zdjęcie do tekstu (format Base64), ale najpierw je mocno pomniejszamy!
-        # Zdjęcia z natywnej kamery S10 mają po kilkanaście megapikseli, co natychmiast
-        # "zabija" model wideo z braku RAM-u i wyrzuca błąd 500 po 90 sekundach.
-        image = cv2.imread(image_path)
-        h, w = image.shape[:2]
-        max_dim = 640
-        if w > max_dim or h > max_dim:
-            scale = max_dim / max(w, h)
-            image = cv2.resize(image, (int(w * scale), int(h * scale)))
-            
-        # Zapisz do bufora pamięci ze stratną kompresją, zakoduj i wyślij:
-        _, buffer = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        encoded_string = base64.b64encode(buffer).decode('utf-8')
-            
         prompt = (
-            "Krótko opisz osobę widoczną na ujęciu jednym zdaniem w języku polskim. "
-            "Rozpocznij to zdanie od słów 'Dzień dobry'."
+            "System bezpieczeństwa właśnie wykrył człowieka przed okiem kamery. "
+            "Wymyśl jedno, krótkie unikalne powitanie po polsku dla takiego gościa. "
+            "Zacznij koniecznie od słów 'Dzień dobry, '"
         )
         
         payload = {
             "model": OLLAMA_MODEL,
             "prompt": prompt,
-            "images": [encoded_string],
-            "stream": False # Czekamy na całość wygenerowanej analizy
+            "stream": False # Czekamy na całość wygenerowanego tekstu
         }
         
-        print(f"      (VLM) Uruchamianie ciężkiego modelu '{OLLAMA_MODEL}'...")
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=90) # Model może myśleć dłużej
+        print(f"      (LLM) Uruchamianie generatora tekstu z modelu '{OLLAMA_MODEL}'...")
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60) # Tekst pójdzie szybciej
         
         if response.status_code == 200:
             result = response.json()
-            return result.get('response', 'Dzień dobry. Brakuje mi słów by to opisać.')
+            return result.get('response', 'Dzień dobry. Brakuje mi słów.')
         else:
-            return f"Błąd serwera sztucznej inteligencji. Kod: {response.status_code}"
+            return f"Błąd wewnętrzny modelu. Kod: {response.status_code}"
             
     except requests.exceptions.ConnectionError:
-        return "Dzień dobry, zawiesiłam się, nie mogę połączyć się z serwerem ollama."
+        return "Nie mogę połączyć się z serwerem Ollama."
     except Exception as e:
-        return "Błąd przetwarzania ollamy."
+        return "Błąd przetwarzania zlecenia."
 
 def speak(text):
     try:
@@ -196,9 +183,9 @@ def main():
                         print(f"   => 🚨 ROZPOZNANO SYLWETKĘ. Analiza...")
                         human_count += 1
                         
-                        # Tutaj Samsung dostaje ciężkie zadanie:
+                        # Tutaj Samsung dostaje lżejsze zadanie (czysty tekst):
                         start_ollama = time.time()
-                        description = ask_ollama_for_description(filename)
+                        description = ask_ollama_for_greeting()
                         end_ollama = time.time()
                         
                         print(f"   => [OLLAMA odp. w {end_ollama - start_ollama:.1f}s]: {description}")
