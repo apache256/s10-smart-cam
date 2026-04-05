@@ -16,7 +16,7 @@ except ImportError:
     print("Brak biblioteki requests! Wpisz: pip install requests")
 
 # Wybór modelu VLM używanego do analizy
-OLLAMA_MODEL = "qwen3-vl:2b"
+OLLAMA_MODEL = "moondream"
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
 try:
     import cv2
