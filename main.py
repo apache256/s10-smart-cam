@@ -15,8 +15,8 @@ except ImportError as e:
     print("Spróbuj: pkg install opencv-python")
 
 # Link do superszybkiego modelu sieci MobileNet-SSD (Caffe format ok. 22MB)
-PROTOTXT_URL = "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/MobileNetSSD_deploy.prototxt"
-MODEL_URL = "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/MobileNetSSD_deploy.caffemodel"
+PROTOTXT_URL = "https://raw.githubusercontent.com/djmv/MobilNet_SSD_opencv/master/MobileNetSSD_deploy.prototxt"
+MODEL_URL = "https://raw.githubusercontent.com/djmv/MobilNet_SSD_opencv/master/MobileNetSSD_deploy.caffemodel"
 
 def download_model_if_needed():
     """Pobiera pliki sztucznej inteligencji, jeśli jeszcze ich nie ma."""
