@@ -14,7 +14,7 @@ except ImportError:
     print("Ostrzeżenie: Biblioteka cv2 (OpenCV) nie jest zainstalowana!")
     print("Aby działała AI, wpisz w Termuxie:")
     print("pkg install x11-repo")
-    print("pkg install opencv-python")
+    print("pkg install opencv python-numpy")
 
 # URL do małego, super-szybkiego modelu Caffe MobileNet-SSD (ok. 22MB)
 # W przeciwieństwie do ciężkiego YOLO, ten model działa natywnie pod OpenCV na 
