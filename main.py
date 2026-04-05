@@ -2,9 +2,22 @@ import os
 import time
 import subprocess
 import urllib.request
+import base64
+import json
+import urllib.error
 from datetime import datetime
 
-# Sprawdzamy instalację OpenCV:
+# Próba zaimportowania np i requests
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("Brak biblioteki requests! Wpisz: pip install requests")
+
+# Wybór modelu VLM używanego do analizy
+OLLAMA_MODEL = "qwen3-vl:2b"
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
 try:
     import cv2
     import numpy as np
@@ -91,6 +104,44 @@ def detect_human(image_path, net):
             
     return found_human
 
+def ask_ollama_for_description(image_path):
+    """
+    Wysyła zdjęcie do modelu VLM i zwraca polski opis.
+    """
+    if not REQUESTS_AVAILABLE:
+        return "Zauważyłem cię, ale brakuje mi pakietu requests do opisu."
+        
+    try:
+        # Kodujemy zdjęcie do tekstu (format Base64) z którym radzą sobie LLM'y
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        prompt = (
+            "Krótko opisz osobę widoczną na ujęciu jednym zdaniem w języku polskim. "
+            "Rozpocznij to zdanie od słów 'Dzień dobry'."
+        )
+        
+        payload = {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "images": [encoded_string],
+            "stream": False # Czekamy na całość wygenerowanej analizy
+        }
+        
+        print(f"      (VLM) Uruchamianie ciężkiego modelu '{OLLAMA_MODEL}'...")
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=90) # Model może myśleć dłużej
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result.get('response', 'Dzień dobry. Brakuje mi słów by to opisać.')
+        else:
+            return f"Błąd serwera sztucznej inteligencji. Kod: {response.status_code}"
+            
+    except requests.exceptions.ConnectionError:
+        return "Dzień dobry, zawiesiłam się, nie mogę połączyć się z serwerem ollama."
+    except Exception as e:
+        return "Błąd przetwarzania ollamy."
+
 def speak(text):
     try:
         subprocess.run(["termux-tts-speak", text], capture_output=True)
@@ -132,10 +183,18 @@ def main():
                     is_human = detect_human(filename, net)
                     
                     if is_human:
-                        print(f"   => 🚨 ROZPOZNANO SYLWETKĘ. Zbadano przez OpenCV. Plik zapamiętany w zdjęciach.")
-                        speak("Dzień dobry! Zostałeś namierzony i wyłapany przez kamerę.")
+                        print(f"   => 🚨 ROZPOZNANO SYLWETKĘ. Analiza...")
                         human_count += 1
-                        time.sleep(2)
+                        
+                        # Tutaj Samsung dostaje ciężkie zadanie:
+                        start_ollama = time.time()
+                        description = ask_ollama_for_description(filename)
+                        end_ollama = time.time()
+                        
+                        print(f"   => [OLLAMA odp. w {end_ollama - start_ollama:.1f}s]: {description}")
+                        speak(description)
+                        
+                        time.sleep(1) # Chwila przerwy po mowie
                     else:
                         print(f"   => 🟢 Spokój. Usuwam pustą klatkę...")
                         os.remove(filename) 
